@@ -1,5 +1,17 @@
 {
   "name": "noma/core",
+  "description": "The core of the Noma framework",
+  "homepage": "https://github.com/nomaphp",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Asko Nõmm",
+      "email": "asko@nmm.ee",
+      "homepage": "https://nmm.ee",
+      "role": "Developer"
+    }
+  ],
+  "type": "library",
   "autoload": {
     "psr-4": {
       "\\Noma\\Core\\": "src/"
