@@ -1,0 +1,13 @@
+{
+  "name": "noma/core",
+  "autoload": {
+    "psr-4": {
+      "\\Noma\\Core\\": "src/"
+    }
+  },
+  "require": {
+    "php": "^8.4",
+    "symfony/var-dumper": "^7.2",
+    "nikic/php-parser": "^5.4"
+  }
+}
