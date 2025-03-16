@@ -41,12 +41,31 @@ class Kernel
                 continue;
             }
 
-            if ($node?->extends?->name === 'Noma\Noma\Controller') {
+            if ($node?->extends?->name === 'Noma\Core\Controller') {
                 return $node?->namespacedName?->name ?? null;
             }
         }
 
         return null;
+    }
+
+    /**
+     * @param string $dir
+     * @return bool
+     */
+    private function isRootDir(string $dir): bool
+    {
+        $separator = DIRECTORY_SEPARATOR;
+
+        if (!file_exists("{$dir}{$separator}composer.json")) {
+            return false;
+        }
+
+        $contents = file_get_contents("{$dir}{$separator}composer.json");
+        $json = json_decode($contents, true);
+        $deps = array_keys($json['require'] ??= []);
+
+        return in_array('noma/core', $deps);
     }
 
     /**
@@ -56,23 +75,22 @@ class Kernel
      */
     private function findRootDir(): string
     {
-        $startingDir = __DIR__;
+        $iterDir = __DIR__;
         $rootDir = null;
         $iterations = 5;
 
         while ($iterations > 0) {
-            // TODO: need better check than just composer.json
-            if (file_exists($startingDir . "/composer.json")) {
-                $rootDir = $startingDir;
+            if ($this->isRootDir($iterDir)) {
+                $rootDir = $iterDir;
             } else {
-                $startingDir = dirname($startingDir);
+                $iterDir = dirname($iterDir);
             }
 
             $iterations--;
         }
 
         if (!$rootDir) {
-            return $startingDir;
+            return $iterDir;
         }
 
         return $rootDir;
@@ -95,9 +113,8 @@ class Kernel
                 $nodeTraverser = new NodeTraverser();
                 $nodeTraverser->addVisitor($nameResolver);
                 $nodes = $nodeTraverser->traverse($parser->parse(file_get_contents($file)));
-                $controller = $this->findControllerInNodes($nodes);
 
-                if ($controller) {
+                if ($controller = $this->findControllerInNodes($nodes)) {
                     $this->controllers[] = $this->hydrateClass($controller);
                 }
             } catch (\Exception $e) {
@@ -231,7 +248,7 @@ class Kernel
                     continue;
                 }
 
-                /** @var Route $attribute */
+                /** @var Route $route */
                 $route = $attributes[0]->newInstance();
 
                 if (!$route->matches($httpMethod, $path)) {
@@ -250,11 +267,38 @@ class Kernel
         return null;
     }
 
+    private function attemptCliResponse(string $command, array $argv = []): ?Response
+    {
+        foreach ($this->controllers as $controller) {
+            $class = new \ReflectionClass($controller);
+            $classMethods = $class->getMethods(\ReflectionMethod::IS_PUBLIC);
+
+            foreach ($classMethods as $classMethod) {
+                $attributes = $classMethod->getAttributes(Command::class);
+
+                if (empty($attributes)) {
+                    continue;
+                }
+
+                /** @var Command $attr */
+                $attr = $attributes[0]->newInstance();
+
+                if ($attr->command !== $command) {
+                    continue;
+                }
+
+                return $controller->{$classMethod->getName()}(...$argv);
+            }
+        }
+
+        return null;
+    }
+
     /**
      * @return Response
      * @throws \ReflectionException
      */
-    public function handleHttpRequest(): Response
+    private function handleHttpRequest(): Response
     {
         if ($response = $this->attemptHttpResponse(
             httpMethod: HttpMethod::from($_SERVER['REQUEST_METHOD']),
@@ -264,6 +308,24 @@ class Kernel
         }
 
         return Response::text('404');
+    }
+
+    private function handleCliRequest(): Response
+    {
+        $argv = $_SERVER['argv'];
+
+        if (count($argv) < 2) {
+            return Response::text('Not enough arguments.');
+        }
+
+        if ($response = $this->attemptCliResponse(
+            command: $argv[1],
+            argv: array_slice($argv, 2)
+        )) {
+            return $response;
+        }
+
+        return Response::text('No command found.');
     }
 
     public function serveHttp(): void
@@ -285,5 +347,15 @@ class Kernel
         $driver->handleRequest(function () {
             $this->serveHttp();
         });
+    }
+
+    public function serveCli(): void
+    {
+        try {
+            $this->handleCliRequest()->deliver();
+        } catch (\ReflectionException $e) {
+            var_dump($e);
+            // TODO: hook to logger
+        }
     }
 }

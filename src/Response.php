@@ -14,7 +14,7 @@ class Response
     public static function text(string $text): static
     {
         return new static(
-            body: $text,
+            body: $text . PHP_EOL,
         );
     }
 
