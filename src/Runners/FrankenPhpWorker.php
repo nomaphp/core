@@ -12,6 +12,8 @@ class FrankenPhpWorker implements Runner
             return;
         }
 
+        ignore_user_abort(true);
+
         // Config max requests
         $maxReqs = (int)($_SERVER['MAX_REQUESTS'] ?? 0);
 
